@@ -1,0 +1,10 @@
+graphify-out/
+.claude/settings.local.json
+.claude/skills
+**/coverage
+**/node_modules
+**/dist
+.agents/scripts/tests/.fixture-*/
+.env
+.env.*
+!.env.example
