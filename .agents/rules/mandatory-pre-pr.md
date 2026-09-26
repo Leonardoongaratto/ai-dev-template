@@ -5,7 +5,7 @@ description: Aplicar ao terminar implementação, refatoração ou correção de
 
 # Regra Obrigatória: Execução e Evidenciação da Skill Pre-PR
 
-Este documento estabelece a diretriz normativa mandatória para a validação de gates pré-PR e comprovação de qualidade via skill **`pre-pr`** ao término de qualquer trabalho de código.
+Define quando rodar os gates da skill `pre-pr` e o que conta como evidência.
 
 ---
 
@@ -15,7 +15,7 @@ Nenhuma implementação, refatoração ou correção de bug é considerada concl
 ---
 
 ## 2. Momento de Execução Obrigatório (Trigger)
-A skill **`pre-pr`** DEVE ser obrigatoriamente executada:
+Rode a skill `pre-pr`:
 1. **Ao término de qualquer feature ou refatoração** (`feature-implementer`).
 2. **Ao término de qualquer correção de bug** (`bug-fixer`).
 3. **Antes da emissão de qualquer parecer de revisão** (`code-reviewer`) — **somente as fases 0, 1, 1.1 e 2, sem gravar arquivos** (fora os artefatos que os próprios comandos de build e teste geram). O resultado vai para a seção de gates do relatório em `docs/reviews/`, e as Fases 3, 4 e 5 ficam com quem alterou o código: cada violação vira achado, e a correção fica com o `bug-fixer` ou o implementador.

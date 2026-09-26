@@ -8,7 +8,7 @@ description: Revisão independente do diff pelo Claude opus (headless), sem edi�
 Rode:
 
 ```
-powershell -NoProfile -ExecutionPolicy Bypass -File .agents/scripts/review-opus.ps1 -Slug <slug> -Context "<caminho em docs/prompts/>"
+pwsh -NoProfile -ExecutionPolicy Bypass -File .agents/scripts/review-opus.ps1 -Slug <slug> -Context "<caminho em docs/prompts/>"
 ```
 
 O revisor headless roda somente leitura: ele só imprime o relatório, o script grava essa resposta em `docs/reviews/`, e os achados no `bugs.md` ficam com esta sessão.

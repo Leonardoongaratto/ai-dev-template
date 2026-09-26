@@ -4,24 +4,32 @@ param(
 )
 
 $ErrorActionPreference = "Stop"
-[Console]::OutputEncoding = [Text.Encoding]::UTF8
+try { [Console]::OutputEncoding = [Text.Encoding]::UTF8 } catch {}
 $root = Split-Path -Parent (Split-Path -Parent $PSScriptRoot)
 Set-Location $root
+
+function Test-IsWindowsPlatform {
+    $v = Get-Variable -Name 'IsWindows' -ErrorAction SilentlyContinue
+    if ($null -ne $v) { return [bool]$v.Value }
+    return [Environment]::OSVersion.Platform -eq [PlatformID]::Win32NT
+}
 
 function Find-ClaudeCli {
     $onPath = Get-Command claude -ErrorAction SilentlyContinue
     if ($onPath) { return $onPath.Source }
 
+    $binaryName = 'claude'
+    if (Test-IsWindowsPlatform) { $binaryName = 'claude.exe' }
     $extensionRoots = @(
-        "$env:USERPROFILE\.antigravity-ide\extensions",
-        "$env:USERPROFILE\.antigravity\extensions",
-        "$env:USERPROFILE\.vscode\extensions",
-        "$env:USERPROFILE\.cursor\extensions"
+        (Join-Path $HOME (Join-Path '.antigravity-ide' 'extensions')),
+        (Join-Path $HOME (Join-Path '.antigravity' 'extensions')),
+        (Join-Path $HOME (Join-Path '.vscode' 'extensions')),
+        (Join-Path $HOME (Join-Path '.cursor' 'extensions'))
     )
     foreach ($extensionRoot in $extensionRoots) {
         $candidate = Get-ChildItem $extensionRoot -Directory -Filter "anthropic.claude-code-*" -ErrorAction SilentlyContinue |
             Sort-Object { [version]($_.Name -replace '^anthropic\.claude-code-([\d\.]+).*$', '$1') } -Descending |
-            ForEach-Object { Join-Path $_.FullName "resources\native-binary\claude.exe" } |
+            ForEach-Object { Join-Path $_.FullName (Join-Path 'resources' (Join-Path 'native-binary' $binaryName)) } |
             Where-Object { Test-Path $_ } |
             Select-Object -First 1
         if ($candidate) { return $candidate }
@@ -30,7 +38,7 @@ function Find-ClaudeCli {
 }
 
 $date = Get-Date -Format "yyyy-MM-dd"
-$reportDir = Join-Path $root "docs\reviews"
+$reportDir = Join-Path $root (Join-Path 'docs' 'reviews')
 $reportPath = Join-Path $reportDir "$($date)_$($Slug)-review.md"
 New-Item -ItemType Directory -Force $reportDir | Out-Null
 

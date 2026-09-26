@@ -1,7 +1,32 @@
 $ErrorActionPreference = 'Stop'
 
+function Test-IsWindowsPlatform {
+    $v = Get-Variable -Name 'IsWindows' -ErrorAction SilentlyContinue
+    if ($null -ne $v) { return [bool]$v.Value }
+    return [Environment]::OSVersion.Platform -eq [PlatformID]::Win32NT
+}
+
+function Test-IsMacPlatform {
+    $v = Get-Variable -Name 'IsMacOS' -ErrorAction SilentlyContinue
+    if ($null -ne $v) { return [bool]$v.Value }
+    return $false
+}
+
+function Join-Segments([string]$base, [string[]]$segments) {
+    $result = $base
+    foreach ($segment in $segments) { $result = Join-Path $result $segment }
+    return $result
+}
+
+$OnWindows = Test-IsWindowsPlatform
+$PathComparisonType = [StringComparison]::Ordinal
+if ($OnWindows -or (Test-IsMacPlatform)) { $PathComparisonType = [StringComparison]::OrdinalIgnoreCase }
+$Separator = [IO.Path]::DirectorySeparatorChar
+$PrettierRelativeSegments = @('node_modules', '.bin', 'prettier')
+if ($OnWindows) { $PrettierRelativeSegments = @('node_modules', '.bin', 'prettier.cmd') }
+
 $FormattableExtensions = @('.ts', '.tsx', '.js', '.jsx', '.css', '.json')
-$WorkspaceRoot = [IO.Path]::GetFullPath((Join-Path $PSScriptRoot '..\..')).TrimEnd('\')
+$WorkspaceRoot = [IO.Path]::GetFullPath((Join-Segments $PSScriptRoot @('..', '..'))).TrimEnd($Separator)
 
 function Read-HookPayload {
     $reader = New-Object IO.StreamReader([Console]::OpenStandardInput(), [Text.Encoding]::UTF8)
@@ -14,17 +39,23 @@ function Get-EditedFilePath($payload) {
     return $null
 }
 
+function Test-PathEquals([string]$a, [string]$b) {
+    return [string]::Equals($a, $b, $PathComparisonType)
+}
+
 function Test-InsideWorkspace([string]$path) {
-    return $path.StartsWith($WorkspaceRoot + '\', [StringComparison]::OrdinalIgnoreCase)
+    return $path.StartsWith($WorkspaceRoot + $Separator, $PathComparisonType)
 }
 
 function Find-LocalPrettier([string]$filePath) {
     $directory = Split-Path -Parent $filePath
-    while ($directory -and (Test-InsideWorkspace ($directory + '\'))) {
-        $candidate = Join-Path $directory 'node_modules\.bin\prettier.cmd'
+    while ($directory -and (Test-InsideWorkspace ($directory + $Separator))) {
+        $candidate = Join-Segments $directory $PrettierRelativeSegments
         if (Test-Path -LiteralPath $candidate) { return $candidate }
-        if ($directory -ieq $WorkspaceRoot) { break }
-        $directory = Split-Path -Parent $directory
+        if (Test-PathEquals $directory $WorkspaceRoot) { break }
+        $parent = Split-Path -Parent $directory
+        if ($parent -eq $directory) { break }
+        $directory = $parent
     }
     return $null
 }

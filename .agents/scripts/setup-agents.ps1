@@ -2,45 +2,80 @@ param([switch]$PrintHookCommand, [switch]$SkipGraphifyInstall)
 
 $ErrorActionPreference = 'Stop'
 
-$workspaceRoot = (Resolve-Path (Join-Path $PSScriptRoot '..\..')).Path
-$skillsTarget = Join-Path $workspaceRoot '.agents\skills'
+function Test-IsWindowsPlatform {
+    $v = Get-Variable -Name 'IsWindows' -ErrorAction SilentlyContinue
+    if ($null -ne $v) { return [bool]$v.Value }
+    return [Environment]::OSVersion.Platform -eq [PlatformID]::Win32NT
+}
+
+function Join-Segments([string]$base, [string[]]$segments) {
+    $result = $base
+    foreach ($segment in $segments) { $result = Join-Path $result $segment }
+    return $result
+}
+
+$workspaceRoot = (Resolve-Path (Join-Segments $PSScriptRoot @('..', '..'))).Path
+$skillsTarget = Join-Segments $workspaceRoot @('.agents', 'skills')
 $claudeDir = Join-Path $workspaceRoot '.claude'
 $skillsLink = Join-Path $claudeDir 'skills'
-$hookLauncher = Join-Path $workspaceRoot '.agents\scripts\hook-launcher.ps1'
+$hookLauncher = Join-Segments $workspaceRoot @('.agents', 'scripts', 'hook-launcher.ps1')
 $hookConfigs = @(
-    (Join-Path $workspaceRoot '.claude\settings.json'),
-    (Join-Path $workspaceRoot '.agents\hooks.json')
+    (Join-Segments $workspaceRoot @('.claude', 'settings.json')),
+    (Join-Segments $workspaceRoot @('.agents', 'hooks.json'))
 )
-$hookCommandPattern = '("command"\s*:\s*")powershell [^"]*?(?:post-tool-formatter\.ps1|-EncodedCommand [A-Za-z0-9+/=]+)(")'
+$hookCommandPattern = '("command"\s*:\s*")(?:powershell|pwsh) [^"]*?(?:post-tool-formatter\.ps1|-EncodedCommand [A-Za-z0-9+/=]+)(")'
 
-function Get-JunctionTarget([string]$path) {
+function Get-LinkTarget([string]$path) {
     $item = Get-Item -LiteralPath $path -Force
-    if (-not ($item.Attributes -band [IO.FileAttributes]::ReparsePoint)) { return $null }
-    return [string]@($item.Target)[0]
+    if ($item.PSObject.Properties.Match('LinkType').Count -gt 0 -and $item.LinkType) {
+        $target = @($item.Target)[0]
+        if ($target) { return [string]$target }
+    }
+    if ($item.Attributes -band [IO.FileAttributes]::ReparsePoint) {
+        $target = @($item.Target)[0]
+        if ($target) { return [string]$target }
+    }
+    return $null
+}
+
+function Test-SkillsLinkCurrent([string]$link, [string]$target) {
+    $current = Get-LinkTarget $link
+    if ($null -eq $current) { return $false }
+    if (Test-IsWindowsPlatform) { return ($current.TrimEnd('\') -ieq $target.TrimEnd('\')) }
+    if ([IO.Path]::IsPathRooted($current)) { $resolved = [IO.Path]::GetFullPath($current) }
+    else { $resolved = [IO.Path]::GetFullPath((Join-Path (Split-Path -Parent $link) $current)) }
+    return ($resolved.TrimEnd('/') -ceq $target.TrimEnd('/'))
 }
 
 function Get-HookCommand {
     $source = [IO.File]::ReadAllText($hookLauncher) -replace "`r`n", "`n"
     $encoded = [Convert]::ToBase64String([Text.Encoding]::Unicode.GetBytes($source))
-    return 'powershell -NoProfile -NonInteractive -ExecutionPolicy Bypass -EncodedCommand ' + $encoded
+    return 'pwsh -NoProfile -NonInteractive -ExecutionPolicy Bypass -EncodedCommand ' + $encoded
 }
 
-function Sync-SkillsJunction {
+function Sync-SkillsLink {
     if (-not (Test-Path -LiteralPath $skillsTarget)) { throw "Skills source not found: $skillsTarget" }
     if (-not (Test-Path -LiteralPath $claudeDir)) { New-Item -ItemType Directory -Path $claudeDir | Out-Null }
 
     if (Test-Path -LiteralPath $skillsLink) {
-        $currentTarget = Get-JunctionTarget $skillsLink
-        if ($null -eq $currentTarget) {
-            throw "$skillsLink is a real directory, not a junction. Move its contents to .agents\skills and delete it, then run this script again."
+        if (Test-SkillsLinkCurrent $skillsLink $skillsTarget) { return 'OK: .claude/skills already points to .agents/skills' }
+        $linkTarget = Get-LinkTarget $skillsLink
+        if ($null -eq $linkTarget) {
+            throw "$skillsLink is a real directory, not a link. Move its contents to .agents/skills and delete it, then run this script again."
         }
-        if ($currentTarget.TrimEnd('\') -ieq $skillsTarget.TrimEnd('\')) { return 'OK: .claude\skills already points to .agents\skills' }
-        cmd /c rmdir "$skillsLink" | Out-Null
+        if (Test-IsWindowsPlatform) { cmd /c rmdir "$skillsLink" | Out-Null }
+        else { Remove-Item -LiteralPath $skillsLink -Force }
     }
 
-    cmd /c mklink /J "$skillsLink" "$skillsTarget" | Out-Null
-    if ($LASTEXITCODE -ne 0) { throw "mklink /J failed with exit code $LASTEXITCODE" }
-    return 'CREATED: .claude\skills -> .agents\skills'
+    if (Test-IsWindowsPlatform) {
+        cmd /c mklink /J "$skillsLink" "$skillsTarget" | Out-Null
+        if ($LASTEXITCODE -ne 0) { throw "mklink /J failed with exit code $LASTEXITCODE" }
+        return 'CREATED: .claude/skills -> .agents/skills'
+    }
+
+    $relativeTarget = Join-Path '..' (Join-Path '.agents' 'skills')
+    New-Item -ItemType SymbolicLink -Path $skillsLink -Target $relativeTarget | Out-Null
+    return 'CREATED: .claude/skills -> .agents/skills'
 }
 
 function Get-JsonErrorSummary([string]$message) {
@@ -52,7 +87,7 @@ function Get-JsonErrorSummary([string]$message) {
 }
 
 function Get-HookConfigUpdate([string]$configPath, [string]$command) {
-    $name = $configPath.Substring($workspaceRoot.Length).TrimStart('\')
+    $name = $configPath.Substring($workspaceRoot.Length).TrimStart('\', '/')
     $current = [IO.File]::ReadAllText($configPath)
     $matchCount = ([regex]::Matches($current, $hookCommandPattern)).Count
     if ($matchCount -ne 1) { throw "$name must contain exactly one post-tool-formatter hook command, found $matchCount" }
@@ -82,10 +117,14 @@ function Sync-HookCommands([string[]]$configPaths, [string]$command) {
 }
 
 function Get-GraphifyGlobalPaths {
-    $claudeRoot = if ($env:CLAUDE_CONFIG_DIR) { $env:CLAUDE_CONFIG_DIR } else { Join-Path $env:USERPROFILE '.claude' }
+    $sep = [IO.Path]::DirectorySeparatorChar
+    $claudeRoot = Join-Path $HOME '.claude'
+    if ($env:CLAUDE_CONFIG_DIR) { $claudeRoot = $env:CLAUDE_CONFIG_DIR }
+    $claudeSkills = (Join-Segments $claudeRoot @('skills', 'graphify')) + $sep
+    $antigravitySkills = (Join-Segments $HOME @('.gemini', 'config', 'skills', 'graphify')) + $sep
     return [ordered]@{
-        claude = @((Join-Path $claudeRoot 'skills\graphify\'), (Join-Path $claudeRoot 'CLAUDE.md'))
-        antigravity = @(Join-Path $env:USERPROFILE '.gemini\config\skills\graphify\')
+        claude = @($claudeSkills, (Join-Path $claudeRoot 'CLAUDE.md'))
+        antigravity = @($antigravitySkills)
     }
 }
 
@@ -102,7 +141,9 @@ function Install-GraphifySkill {
     }
     $graphify = Get-Command graphify -ErrorAction SilentlyContinue
     if (-not $graphify) {
-        Write-Output 'WARN: graphify not found on PATH. Install with: python -m pip install "graphifyy[mcp]"'
+        $hint = 'pipx install "graphifyy[mcp]" (then pipx ensurepath)'
+        if (Test-IsWindowsPlatform) { $hint = 'pip install "graphifyy[mcp]"' }
+        Write-Output "WARN: graphify not found on PATH. Install with: $hint"
         return
     }
     $globalPaths = Get-GraphifyGlobalPaths
@@ -120,7 +161,7 @@ try {
         Write-Output $hookCommand
         exit 0
     }
-    Write-Output (Sync-SkillsJunction)
+    Write-Output (Sync-SkillsLink)
     Sync-HookCommands $hookConfigs $hookCommand
     Install-GraphifySkill
 } catch {

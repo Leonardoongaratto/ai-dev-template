@@ -1,19 +1,19 @@
 {
   "mcpServers": {
     "context7": {
-      "command": "cmd",
-      "args": ["/c", "npx", "-y", "@upstash/context7-mcp"],
+      "command": "pwsh",
+      "args": ["-NoProfile", "-NonInteractive", "-ExecutionPolicy", "Bypass", "-Command", "npx -y @upstash/context7-mcp"],
       "env": {
         "CONTEXT7_API_KEY": "${CONTEXT7_API_KEY}"
       }
     },
     "graphify": {
-      "command": "python",
-      "args": ["-m", "graphify.serve", "graphify-out/graph.json"]
+      "command": "graphify-mcp",
+      "args": ["graphify-out/graph.json"]
     },
     "playwright": {
-      "command": "cmd",
-      "args": ["/c", "npx", "-y", "@playwright/mcp@latest"]
+      "command": "pwsh",
+      "args": ["-NoProfile", "-NonInteractive", "-ExecutionPolicy", "Bypass", "-Command", "npx -y @playwright/mcp@latest"]
     }
   }
 }

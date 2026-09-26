@@ -1,10 +1,16 @@
 $ErrorActionPreference = 'Stop'
 $ProgressPreference = 'SilentlyContinue'
-$FormatterRelativePath = '.agents\scripts\post-tool-formatter.ps1'
+$FormatterRelativeSegments = @('.agents', 'scripts', 'post-tool-formatter.ps1')
+
+function Join-Segments([string]$base, [string[]]$segments) {
+    $result = $base
+    foreach ($segment in $segments) { $result = Join-Path $result $segment }
+    return $result
+}
 
 function Get-FormatterIn([string]$directory) {
     if (-not $directory) { return $null }
-    try { $candidate = Join-Path $directory $FormatterRelativePath } catch { return $null }
+    try { $candidate = Join-Segments $directory $FormatterRelativeSegments } catch { return $null }
     if (Test-Path -LiteralPath $candidate -PathType Leaf) { return $candidate }
     return $null
 }
@@ -16,7 +22,9 @@ function Find-Formatter {
     while ($directory) {
         $found = Get-FormatterIn $directory
         if ($found) { return $found }
-        $directory = Split-Path -Parent $directory
+        $parent = Split-Path -Parent $directory
+        if ($parent -eq $directory) { break }
+        $directory = $parent
     }
     return $null
 }

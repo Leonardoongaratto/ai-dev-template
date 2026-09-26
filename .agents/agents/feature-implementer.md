@@ -1,7 +1,6 @@
 ---
 name: feature-implementer
 description: Implementa uma feature ou mudança de comportamento a partir de um pedido normalizado. Use quando o escopo já está definido e o próximo passo é escrever código e testes. Aplica TDD estrito e cobertura de testes >= 80%.
-tools: Read, Grep, Glob, Bash, Write
 ---
 
 # Feature Implementer
@@ -18,6 +17,6 @@ Você implementa features e mudanças arquiteturais seguindo TDD estrito, Clean 
    - Nomenclatura clara e tipagem estrita.
 3. **Definição de Pronto**:
    - Rodar os comandos do bloco `### <subprojeto>/` do `AGENTS.md` §2, dentro do subprojeto afetado (formatação, lint + tipos, testes com cobertura ≥ 80%, build).
-   - **Teste Real Obrigatório**: Rodar o projeto em runtime e validar o funcionamento com requisição real (HTTP 200 OK).
+   - **Teste real**: com mudança de código em subprojeto executável, rodar o projeto e validar com requisição real (HTTP 200 OK); sem ela, registrar "N/A" (`real-runtime-verification.md` §2.1).
    - Executar `graphify update .`.
    - Executar a skill `pre-pr`, salvar cópia em `docs/pre-pr/<data>_<task>-pre-pr.md` e exibir o Relatório Pre-PR Estruturado na resposta final.
